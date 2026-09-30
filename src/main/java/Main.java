@@ -110,6 +110,7 @@ public class Main {
                             list.add(parts.get(i));
                         }
                         size = list.size();
+                        list.notifyAll();
                     }
                     outputStream.write((":" + size + "\r\n").getBytes());
                 } else if (command.equals("LPUSH")) {
@@ -120,6 +121,7 @@ public class Main {
                             list.add(0, parts.get(i));   // insert at the front
                         }
                         size = list.size();
+                        list.notifyAll();
                     }
                     outputStream.write((":" + size + "\r\n").getBytes());
                 }
@@ -152,6 +154,66 @@ public class Main {
                         sb.append("$").append(item.length()).append("\r\n").append(item).append("\r\n");
                     }
                     outputStream.write(sb.toString().getBytes());
+                } else if (command.equals("LLEN")){
+                    List<String> list = lists.get(parts.get(1));
+                    int size = 0;
+                    if(list != null)
+                    {
+                        synchronized (list){
+                            size = list.size();
+                        }
+                    }
+                    outputStream.write((":" + size + "\r\n").getBytes());
+                } else if (command.equals("LPOP")) {
+                    List<String> list = lists.get(parts.get(1));
+                    String removed = null;
+                    if(list!=null){
+                        synchronized (list){
+                            if(!list.isEmpty()){
+                                removed = list.remove(0);
+                            }
+                        }
+                    }
+                    if(removed == null){
+                        outputStream.write("$-1\r\n".getBytes());
+                    }
+                    else {
+                        outputStream.write(("$" + removed.length() + "\r\n" + removed + "\r\n").getBytes());
+                    }
+                } else if (command.equals("BLPOP")) {
+                    String key = parts.get(1);
+                    double timeoutSec = Double.parseDouble(parts.get(2));
+                    long deadline = System.currentTimeMillis() + (long) Math.ceil(timeoutSec * 1000);
+
+                    List<String> list = lists.computeIfAbsent(key, k -> new ArrayList<>());
+                    String element = null;
+                    synchronized (list) {
+                        try {
+                            while (list.isEmpty()) {
+                                if (timeoutSec == 0) {
+                                    list.wait();                       // wait forever
+                                } else {
+                                    long remaining = deadline - System.currentTimeMillis();
+                                    if (remaining <= 0) break;         // timed out
+                                    list.wait(remaining);              // wait at most the time left
+                                }
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        }
+                        if (!list.isEmpty()) {
+                            element = list.remove(0);
+                        }
+                    }
+
+                    if (element == null) {
+                        outputStream.write("*-1\r\n".getBytes());      // null array: timed out
+                    } else {
+                        outputStream.write(("*2\r\n"
+                                + "$" + key.length() + "\r\n" + key + "\r\n"
+                                + "$" + element.length() + "\r\n" + element + "\r\n").getBytes());
+                    }
                 }
 
                 outputStream.flush();
