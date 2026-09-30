@@ -8,7 +8,17 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class Main {
-    private static final ConcurrentHashMap<String,String> store = new ConcurrentHashMap<>();
+    private static class Entry{
+        final String value;
+        final long expiresAt;
+
+        Entry(String value, long expiresAt)
+        {
+            this.value = value;
+            this.expiresAt = expiresAt;
+        }
+    }
+    private static final ConcurrentHashMap<String,Entry> store = new ConcurrentHashMap<>();
     public static void main(String[] args) {
         System.out.println("Logs from your program will appear here!");
 
@@ -71,15 +81,24 @@ public class Main {
                     String arg = parts.get(1);
                     outputStream.write(("$" + arg.length() + "\r\n" + arg + "\r\n").getBytes());
                 } else if(command.equals("SET")){
-                    store.put(parts.get(1), parts.get(2));
+                    long expiresAt = -1;
+                    if(parts.size()>=5 && parts.get(3).equalsIgnoreCase("PX")){
+                        expiresAt =  System.currentTimeMillis() + Long.parseLong(parts.get(4));
+                    }
+                    store.put(parts.get(1), new Entry(parts.get(2),expiresAt));
                     outputStream.write("+OK\r\n".getBytes());
                 } else if (command.equals("GET")){
-                    String value = store.get(parts.get(1));
-                    if(value==null){
+                    Entry entry=  store.get(parts.get(1));
+                    if(entry != null && entry.expiresAt != -1 && System.currentTimeMillis() >= entry.expiresAt){
+                        store.remove(parts.get(1));
+                        entry = null;
+                    }
+//                    String value = store.get(parts.get(1));
+                    if(entry==null){
                         outputStream.write("$-1\r\n".getBytes());
                     }
                     else{
-                        outputStream.write(("$"+value.length()+"\r\n"+ value +"\r\n").getBytes());
+                        outputStream.write(("$"+entry.value.length()+"\r\n"+ entry.value +"\r\n").getBytes());
                     }
                 }
 
