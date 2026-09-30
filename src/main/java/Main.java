@@ -19,6 +19,7 @@ public class Main {
         }
     }
     private static final ConcurrentHashMap<String,Entry> store = new ConcurrentHashMap<>();
+    static final ConcurrentHashMap<String , List<String>> lists = new ConcurrentHashMap<>();
     public static void main(String[] args) {
         System.out.println("Logs from your program will appear here!");
 
@@ -100,6 +101,57 @@ public class Main {
                     else{
                         outputStream.write(("$"+entry.value.length()+"\r\n"+ entry.value +"\r\n").getBytes());
                     }
+                }
+                else if(command.equals("RPUSH")){
+                    List<String> list = lists.computeIfAbsent(parts.get(1),k -> new ArrayList<>());
+                    int size;
+                    synchronized (list){
+                        for(int  i = 2;i<parts.size();i++){
+                            list.add(parts.get(i));
+                        }
+                        size = list.size();
+                    }
+                    outputStream.write((":" + size + "\r\n").getBytes());
+                } else if (command.equals("LPUSH")) {
+                    List<String> list = lists.computeIfAbsent(parts.get(1), k -> new ArrayList<>());
+                    int size;
+                    synchronized (list) {
+                        for (int i = 2; i < parts.size(); i++) {
+                            list.add(0, parts.get(i));   // insert at the front
+                        }
+                        size = list.size();
+                    }
+                    outputStream.write((":" + size + "\r\n").getBytes());
+                }
+                else if (command.equals("LRANGE")){
+                    List<String> list = lists.get(parts.get(1));
+                    int start = Integer.parseInt((parts.get(2)));
+                    int stop = Integer.parseInt(parts.get(3));
+
+                    List<String> result  = new ArrayList<>();
+                    if (list != null){
+                        synchronized (list){
+//                            int size = list.size(); // positive
+//                            if(stop >= size) stop = size - 1;
+//                            if(start <= stop){
+//                                result.addAll(list.subList(start,stop+1));
+//                            }
+                            int size = list.size();
+                            if(start < 0) start = Math.max(size + start ,0);
+                            if(stop < 0) stop = size + stop;
+                            if(stop>=size) stop = size - 1;
+                            if(start <=  stop){
+                                result.addAll(list.subList(start , stop +1));
+                            }
+                        }
+                    }
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("*").append(result.size()).append("\r\n");
+                    for(String item : result)
+                    {
+                        sb.append("$").append(item.length()).append("\r\n").append(item).append("\r\n");
+                    }
+                    outputStream.write(sb.toString().getBytes());
                 }
 
                 outputStream.flush();
